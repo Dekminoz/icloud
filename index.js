@@ -8,31 +8,33 @@ var _ = require('lodash');
 // configuration
 var setup = 'https://p12-setup.icloud.com/setup/ws/1';
 var conf = {
-    home : 'https://www.icloud.com',
-    setup : setup,
-    login : setup + "/login",
-    validate : setup + "/validate",
+    home: 'https://www.icloud.com',
+    setup: setup,
+    login: setup + "/login",
+    validate: setup + "/validate",
 }
 
-module.exports = function() {
+module.exports = function () {
 
     // default request object
-    var req = request.defaults({ 
-        headers : {
+    var req = request.defaults({
+        headers: {
             'host': 'setup.icloud.com',
-            'origin' : conf.home,
-            'referer' : conf.home,
+            'origin': conf.home,
+            'referer': conf.home,
             'User-Agent': 'Opera/9.52 (X11; Linux i686; U; en)'
         },
-        jar : request.jar(),
-        json : true
+        jar: request.jar(),
+        json: true
     });
 
     // store various request meta credentials 
-    var session = { params : {
-        clientBuildNumber : '14FPlus30',
-        clientId : uuid.v1().toUpperCase(),
-    } };
+    var session = {
+        params: {
+            clientBuildNumber: '14FPlus30',
+            clientId: uuid.v1().toUpperCase(),
+        }
+    };
 
     /*
     Queries the /validate endpoint and fetches two key values we need:
@@ -43,10 +45,10 @@ module.exports = function() {
     function refresh_validate(cb) {
 
         // make the request via the session params
-        req.get({ 
-            url : conf.validate,
-            qs : session.params
-        }, function(err, resp, data) {
+        req.get({
+            url: conf.validate,
+            qs: session.params
+        }, function (err, resp, data) {
             if (err) return cb(err);
 
             // capture the dsid 
@@ -58,15 +60,15 @@ module.exports = function() {
 
 
     function login(apple_id, password, cb) {
-        
+
         // store the user info
-        session.user = { 
-            apple_id : apple_id,
-            password : password
+        session.user = {
+            apple_id: apple_id,
+            password: password
         }
 
         // validate before login
-        refresh_validate(function(err, results) {
+        refresh_validate(function (err, results) {
             if (err) return cb(err);
 
             // craft data for login request
@@ -75,12 +77,12 @@ module.exports = function() {
             data.extended_login = false;
 
             // login request
-            req.post({ 
-                url : conf.login,
-                qs : session.params,
+            req.post({
+                url: conf.login,
+                qs: session.params,
                 json: data
-            }, function(err, resp, data) {
-                if (err || data.error) 
+            }, function (err, resp, data) {
+                if (err || data.error)
                     return cb("Invalid email/password combination.");
 
                 // store the results
@@ -99,81 +101,55 @@ module.exports = function() {
             return cb("No webservice found for contacts");
 
         var params = _.extend({}, session.params, {
-            clientVersion : "2.1",
-            locale : "en_US",
-            order : "last,first",
+            clientVersion: "2.1",
+            locale: "en_US",
+            order: "last,first",
         });
 
         var url = session.webservices.contacts.url.replace(':443', '');
-        
+
         req.get({
-            url : session.webservices.contacts.url + "/co/startup",
-            qs : params,
-            headers : {
-                host : session.webservices.contacts.url.split('//')[1].split(':')[0],
+            url: session.webservices.contacts.url + "/co/startup",
+            qs: params,
+            headers: {
+                host: session.webservices.contacts.url.split('//')[1].split(':')[0],
             }
-        }, function(err, resp, body) {
+        }, function (err, resp, body) {
             if (err) return cb(err);
             cb(null, body);
         });
     }
-        
-    // fetch events
-    function events(from,to,timezone,startup, cb) {
+    // fetch calendars events
+    function calendars(params, cb) {
+        var lang = (params.lang != undefined) ? params.lang : "en-en";
+        var timezone = (params.timezone != undefined) ? params.timezone : "America/New_York";
+        var startDate = (params.startDate != undefined) ? params.startDate : "2000-01-01";
+        var endDate = (params.endDate != undefined) ? params.endDate : "2100-01-01";
         if (!session.webservices || !session.webservices.calendar)
-            return cb("No webservice found for calendars");
-
+            return cb("No webservice found for calendar");
         var params = _.extend({}, session.params, {
-            lang: 'en-us',
+            clientVersion: "5.1",
+            lang: lang,
             usertz: timezone,
-            startDate: from,
-            endDate: to
+            startDate: startDate,
+            endDate: endDate,
         });
-
         var url = session.webservices.calendar.url.replace(':443', '');
-        var urlpath = (startup ? 'startup' : 'events');
-
         req.get({
-            url : session.webservices.calendar.url + "/ca/" + urlpath,
-            qs : params,
-            headers : {
-                host : session.webservices.calendar.url.split('//')[1].split(':')[0],
+            url: session.webservices.calendar.url + "/ca/events",
+            qs: params,
+            headers: {
+                host: session.webservices.calendar.url.split('//')[1].split(':')[0],
             }
-        }, function(err, resp, body) {
+        }, function (err, resp, body) {
             if (err) return cb(err);
             cb(null, body);
         });
     }
-    
-    // fetch event details
-    function event(calId,eventId,timezone,cb) {
-        if (!session.webservices || !session.webservices.calendar)
-            return cb("No webservice found for calendars");
-
-        var params = _.extend({}, session.params, {
-            lang: 'en-us',
-            usertz: timezone
-        });
-
-        var url = session.webservices.calendar.url.replace(':443', '');
-
-        req.get({
-            url : session.webservices.calendar.url + "/ca/eventdetail/" + calId + "/" + eventId,
-            qs : params,
-            headers : {
-                host : session.webservices.calendar.url.split('//')[1].split(':')[0],
-            }
-        }, function(err, resp, body) {
-            if (err) return cb(err);
-            cb(null, body);
-        });
-    }
-
     return {
         login: login,
-        contacts:  contacts,
-        events:  events,
-        event:  event
+        contacts: contacts,
+        calendars: calendars,
     }
 
 }
